@@ -6,6 +6,7 @@
 #include <math.h>
 #include <time.h>
 #include <fftw3.h>
+#include <omp.h>
 
 // Constants etc.
 
@@ -28,7 +29,7 @@
 // Temporary definition of MAX function
 #define MAX(a,b) (((a)>(b))?(a):(b))
 
-// System structure definitionRes Publica
+// System structure definition
 struct dir {
 	double w;
 	double losc;		// Oscillator length
@@ -87,7 +88,7 @@ void main(){
 	printf("WithGroundState: %d\t %E\n",-1,innerproductwithgroundstate(sys));
 
 	for(ii=0;ii<50000;ii++){
-		if(ii % 1000 == 0)
+		if(ii % 10 == 0)
 			printf("WithGroundState: %d\t %E\n",ii,innerproductwithgroundstate(sys));
 		sys = imaginarytimestep(sys);
 	}
@@ -189,8 +190,9 @@ struct system initialize(){
 	}
 
 	// Use multithreaded fftw (Not enabled on students server)
-	//fftw_init_threads();
-	//fftw_plan_with_nthreads(2);
+	omp_set_num_threads(3);
+	fftw_init_threads();
+	fftw_plan_with_nthreads(omp_get_max_threads());
 
 	// Initialize fftw plans
 	sys.pf = fftw_plan_dft_2d(Lx, Ly, sys.psi, sys.psi, FFTW_FORWARD, FFTW_MEASURE);
@@ -313,64 +315,77 @@ struct system timestep(struct system sys){
 
 // Performs a single time step on the system
 struct system imaginarytimestep(struct system sys){
-	int ii,jj; // Initialize iterators
-	double xi,psire,psiim,psi2,arg,exparg;
 
-	double totalargf = 0;
-	double totalargk = 0;
+	#pragma omp parallel
+	{
 
-	// Half a space step
-	for(ii=0;ii<Lx;ii++){
-		for(jj=0;jj<Ly;jj++){
-			psire = sys.psi[ii*Ly+jj][0];
-			psiim = sys.psi[ii*Ly+jj][1];
+		int ii,jj; // Initialize iterators
+		double psire,psiim,psi2,arg,exparg;
 
-			psi2 = pow(psire*psire+psiim*psiim,2./3.);
+		// Half a space step
+		#pragma omp for
+		for(ii=0;ii<Lx;ii++){
+			for(jj=0;jj<Ly;jj++){
+				psire = sys.psi[ii*Ly+jj][0];
+				psiim = sys.psi[ii*Ly+jj][1];
 
-			arg = sys.consx * sys.x2[ii*Ly+jj]+sys.consint*psi2;
-			exparg = exp(arg);
+				psi2 = pow(psire*psire+psiim*psiim,2./3.);
 
-			sys.psi[ii*Ly+jj][0] = psire * exparg;
-			sys.psi[ii*Ly+jj][1] = psiim * exparg;
+				arg = sys.consx * sys.x2[ii*Ly+jj]+sys.consint*psi2;
+				exparg = exp(arg);
+
+				sys.psi[ii*Ly+jj][0] = psire * exparg;
+				sys.psi[ii*Ly+jj][1] = psiim * exparg;
+			}
 		}
 	}
 
 	// Fourier transform of wave function
 	fftw_execute(sys.pf);
 
-	// Momentum space step
-	for(ii=0;ii<Lx;ii++){
-		for(jj=0;jj<Ly;jj++){
-			psire = sys.psi[ii*Ly+jj][0];
-			psiim = sys.psi[ii*Ly+jj][1];
+	#pragma omp parallel
+	{
 
-			arg = sys.consk * sys.k2[ii*Ly+jj];
-			exparg = exp(arg);
+		int ii,jj; // Initialize iterators
+		double psire,psiim,psi2,arg,exparg;
 
-			sys.psi[ii*Ly+jj][0] = psire * exparg/(double)sys.gridsize;
-			sys.psi[ii*Ly+jj][1] = psiim * exparg/(double)sys.gridsize;
+		// Momentum space step
+		#pragma omp for
+		for(ii=0;ii<Lx;ii++){
+			for(jj=0;jj<Ly;jj++){
+				psire = sys.psi[ii*Ly+jj][0];
+				psiim = sys.psi[ii*Ly+jj][1];
+				arg = sys.consk * sys.k2[ii*Ly+jj];
+				exparg = exp(arg);
+				sys.psi[ii*Ly+jj][0] = psire * exparg/(double)sys.gridsize;
+				sys.psi[ii*Ly+jj][1] = psiim * exparg/(double)sys.gridsize;
+			}
 		}
 	}
-
+	
 	// Fourier transform back
 	fftw_execute(sys.pb);
 
-	// Half a space step
-	for(ii=0;ii<Lx;ii++){
-		for(jj=0;jj<Ly;jj++){
-			psire = sys.psi[ii*Ly+jj][0];
-			psiim = sys.psi[ii*Ly+jj][1];
 
-			psi2 = pow(psire*psire+psiim*psiim,2./3.);
+	#pragma omp parallel
+	{
+		int ii,jj; // Initialize iterators
+		double psire,psiim,psi2,arg,exparg;
 
-			arg = sys.consx * sys.x2[ii*Ly+jj]+sys.consint*psi2;
-			exparg = exp(arg);
+		#pragma omp for
+		for(ii=0;ii<Lx;ii++){
+			for(jj=0;jj<Ly;jj++){
+				psire = sys.psi[ii*Ly+jj][0];
+				psiim = sys.psi[ii*Ly+jj][1];
 
-			sys.psi[ii*Ly+jj][0] = psire * exparg;
-			sys.psi[ii*Ly+jj][1] = psiim * exparg;
+				psi2 = pow(psire*psire+psiim*psiim,2./3.);
+				arg = sys.consx * sys.x2[ii*Ly+jj]+sys.consint*psi2;
+				exparg = exp(arg);
+				sys.psi[ii*Ly+jj][0] = psire * exparg;
+				sys.psi[ii*Ly+jj][1] = psiim * exparg;
+			}
 		}
 	}
-
 
 
 	// Return updated system
