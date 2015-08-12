@@ -1,0 +1,2 @@
+# ssolver
+Schrodinger Equation solver
