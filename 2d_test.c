@@ -61,7 +61,7 @@ struct system {
 	double mu;			// Chemical potential of the system
 	double mus;			// Scaled (Dimensionless) chemical potential of the system
 	double gs;			// Scaled U0
-	double extrapot[Lx][Ly];		// Added potential
+	double * extrapot;		// Added potential
 };
 
 // Function definitions
@@ -118,6 +118,16 @@ struct system initialize(){
 	// Define the system size
 	sys.gridsize = Lx*Ly;
 
+	// Allocate memory
+	sys.psi = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * sys.gridsize);
+	sys.k2 = (double*) malloc(sizeof(double) * sys.gridsize);
+	sys.x2 = (double*) malloc(sizeof(double) * sys.gridsize);
+	sys.extrapot = (double*) malloc(sizeof(double) * sys.gridsize);
+	sys.x.x = (double*) malloc(sizeof(double) * Lx);
+	sys.x.k = (double*) malloc(sizeof(double) * Lx);
+	sys.y.x = (double*) malloc(sizeof(double) * Ly);
+	sys.y.k = (double*) malloc(sizeof(double) * Ly);
+
 	// Define chemical potential (calculate from mu later?)
 	sys.npart = 2E7;
 	sys.mu = 1.68115*pow(as,2./5.)*pow(m,1./5.)*pow(sys.npart,2./5.)*pow(2*Pi*104.,4./5.)*pow(2*Pi*16.,2./5.)*pow(hbar,4./5.); // mu ~ 2KHz
@@ -171,17 +181,14 @@ struct system initialize(){
 	// Initialize the k-sq grid
 	for(ii=0;ii<Lx;ii++){
 		for(jj=0;jj<Ly;jj++){
-			sys.k2[ii][jj] = sys.x.k[ii]*sys.x.k[ii]+sys.y.k[jj]*sys.y.k[jj];
-			sys.x2[ii][jj] = sys.x.x[ii]*sys.x.x[ii]+(sys.y.w/sys.x.w)*(sys.y.w/sys.x.w)*sys.y.x[jj]*sys.y.x[jj];
+			sys.k2[ii*Lx+jj] = sys.x.k[ii]*sys.x.k[ii]+sys.y.k[jj]*sys.y.k[jj];
+			sys.x2[ii*Lx+jj] = sys.x.x[ii]*sys.x.x[ii]+(sys.y.w/sys.x.w)*(sys.y.w/sys.x.w)*sys.y.x[jj]*sys.y.x[jj];
 		}
 	}
 
 	// Use multithreaded fftw (Not enabled on students server)
 	//fftw_init_threads();
 	//fftw_plan_with_nthreads(2);
-
-	// Allocate memory for the wave function
-	sys.psi = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * sys.gridsize);
 
 	// Initialize fftw plans
 	sys.pf = fftw_plan_dft_2d(Lx, Ly, sys.psi, sys.psi, FFTW_FORWARD, FFTW_MEASURE);
@@ -212,7 +219,7 @@ struct system initialize(){
 	gausstemp = sys.tscale*2*Pi*500./(sqrt(2*Pi)*10.*sys.x.dx)*sys.dt;
 	for(ii=0;ii<Lx;ii++){
 		for(jj=0;jj<Ly;jj++){
-			sys.extrapot[ii][jj] = -0.5*gausstemp*exp(-(sys.x.x[ii]/(10.*sys.x.dx))*(sys.x.x[ii]/(10.*sys.x.dx))/2.);
+			sys.extrapot[ii*Lx+jj] = -0.5*gausstemp*exp(-(sys.x.x[ii]/(10.*sys.x.dx))*(sys.x.x[ii]/(10.*sys.x.dx))/2.);
 		}
 	}
 	printf("List of constants:\nmu: %E\nnpart: %E\nx: %E\nk: %E\nint: %E\nGauss: %E\n",sys.mu,sys.npart,sys.consx,sys.consk,sys.consint,gausstemp);
@@ -249,7 +256,7 @@ struct system timestep(struct system sys){
 
 			psi2 = pow(psire*psire+psiim*psiim,2./3.);
 
-			arg = sys.consx * sys.x2[ii][jj]+sys.consint*psi2;
+			arg = sys.consx * sys.x2[ii*Lx+jj]+sys.consint*psi2;
 			sinarg = sin(arg);
 			cosarg = cos(arg);
 
@@ -267,7 +274,7 @@ struct system timestep(struct system sys){
 			psire = sys.psi[ii*Lx+jj][0];
 			psiim = sys.psi[ii*Lx+jj][1];
 
-			arg = sys.consk * sys.k2[ii][jj];
+			arg = sys.consk * sys.k2[ii*Lx+jj];
 			sinarg = sin(arg);
 			cosarg = cos(arg);
 
@@ -287,7 +294,7 @@ struct system timestep(struct system sys){
 
 			psi2 = pow(psire*psire+psiim*psiim,2./3.);
 
-			arg = sys.consx * sys.x2[ii][jj]+sys.consint*psi2;
+			arg = sys.consx * sys.x2[ii*Lx+jj]+sys.consint*psi2;
 			sinarg = sin(arg);
 			cosarg = cos(arg);
 
@@ -318,7 +325,7 @@ struct system imaginarytimestep(struct system sys){
 
 			psi2 = pow(psire*psire+psiim*psiim,2./3.);
 
-			arg = sys.consx * sys.x2[ii][jj]+sys.consint*psi2;
+			arg = sys.consx * sys.x2[ii*Lx+jj]+sys.consint*psi2;
 			exparg = exp(arg);
 
 			sys.psi[ii*Lx+jj][0] = psire * exparg;
@@ -335,7 +342,7 @@ struct system imaginarytimestep(struct system sys){
 			psire = sys.psi[ii*Lx+jj][0];
 			psiim = sys.psi[ii*Lx+jj][1];
 
-			arg = sys.consk * sys.k2[ii][jj];
+			arg = sys.consk * sys.k2[ii*Lx+jj];
 			exparg = exp(arg);
 
 			sys.psi[ii*Lx+jj][0] = psire * exparg/(double)sys.gridsize;
@@ -354,7 +361,7 @@ struct system imaginarytimestep(struct system sys){
 
 			psi2 = pow(psire*psire+psiim*psiim,2./3.);
 
-			arg = sys.consx * sys.x2[ii][jj]+sys.consint*psi2;
+			arg = sys.consx * sys.x2[ii*Lx+jj]+sys.consint*psi2;
 			exparg = exp(arg);
 
 			sys.psi[ii*Lx+jj][0] = psire * exparg;
