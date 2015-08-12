@@ -21,8 +21,8 @@
 
 // System size (MUST ALL BE EVEN)
 
-#define Lx 200
-#define Ly 200
+#define Lx 2000
+#define Ly 1200
 #define STEPSPERSCALETIME 100000
 
 // Temporary definition of MAX function
@@ -79,7 +79,6 @@ void writetofile(struct system sys,int num);
 
 // Main loop
 void main(){
-
 	struct system sys = initialize();
 
 	int ii; // Initialize iterators
@@ -127,6 +126,9 @@ struct system initialize(){
 	sys.x.k = (double*) malloc(sizeof(double) * Lx);
 	sys.y.x = (double*) malloc(sizeof(double) * Ly);
 	sys.y.k = (double*) malloc(sizeof(double) * Ly);
+
+	if((sys.psi==NULL)||(sys.k2==NULL)||(sys.x2==NULL)||(sys.extrapot==NULL)||(sys.x.x==NULL)||(sys.x.k==NULL)||(sys.y.x==NULL)||(sys.y.k==NULL))
+		printf("Memory wrongly allocated!\n");
 
 	// Define chemical potential (calculate from mu later?)
 	sys.npart = 2E7;
@@ -181,8 +183,8 @@ struct system initialize(){
 	// Initialize the k-sq grid
 	for(ii=0;ii<Lx;ii++){
 		for(jj=0;jj<Ly;jj++){
-			sys.k2[ii*Lx+jj] = sys.x.k[ii]*sys.x.k[ii]+sys.y.k[jj]*sys.y.k[jj];
-			sys.x2[ii*Lx+jj] = sys.x.x[ii]*sys.x.x[ii]+(sys.y.w/sys.x.w)*(sys.y.w/sys.x.w)*sys.y.x[jj]*sys.y.x[jj];
+			sys.k2[ii*Ly+jj] = sys.x.k[ii]*sys.x.k[ii]+sys.y.k[jj]*sys.y.k[jj];
+			sys.x2[ii*Ly+jj] = sys.x.x[ii]*sys.x.x[ii]+(sys.y.w/sys.x.w)*(sys.y.w/sys.x.w)*sys.y.x[jj]*sys.y.x[jj];
 		}
 	}
 
@@ -201,13 +203,13 @@ struct system initialize(){
 	//double tempconst2y = sqrt(2.*sys.mu/(m*2.*2.*Pi*Pi*104.*104.));
 	for(ii=0;ii<Lx;ii++){
 		for(jj=0;jj<Ly;jj++){
-			sys.psi[ii*Lx+jj][0] = tempconst1*pow(MAX(0.,1-(sys.x.x[ii]/sys.x.rtfs)*(sys.x.x[ii]/sys.x.rtfs)-(sys.y.x[jj]/sys.y.rtfs)*(sys.y.x[jj]/sys.y.rtfs)),3./4.);
-			sys.psi[ii*Lx+jj][1] = 0;
+			sys.psi[ii*Ly+jj][0] = tempconst1*pow(MAX(0.,1-(sys.x.x[ii]/sys.x.rtfs)*(sys.x.x[ii]/sys.x.rtfs)-(sys.y.x[jj]/sys.y.rtfs)*(sys.y.x[jj]/sys.y.rtfs)),3./4.);
+			sys.psi[ii*Ly+jj][1] = 0;
 		}
 	}
 
 	// Calculate the particle number
-	printf("npart: %E\n",densintegrate(sys));
+	// printf("npart: %E\n",densintegrate(sys));
 
 	// Initialize the simulation constants
 	sys.consx = -0.25*(m * sys.x.w * sys.lscale * sys.lscale)/hbar * sys.x.w * sys.tscale * sys.dt; // Divided by 2 because we do 2 seperate space steps
@@ -219,11 +221,11 @@ struct system initialize(){
 	gausstemp = sys.tscale*2*Pi*500./(sqrt(2*Pi)*10.*sys.x.dx)*sys.dt;
 	for(ii=0;ii<Lx;ii++){
 		for(jj=0;jj<Ly;jj++){
-			sys.extrapot[ii*Lx+jj] = -0.5*gausstemp*exp(-(sys.x.x[ii]/(10.*sys.x.dx))*(sys.x.x[ii]/(10.*sys.x.dx))/2.);
+			sys.extrapot[ii*Ly+jj] = -0.5*gausstemp*exp(-(sys.x.x[ii]/(10.*sys.x.dx))*(sys.x.x[ii]/(10.*sys.x.dx))/2.);
 		}
 	}
 	printf("List of constants:\nmu: %E\nnpart: %E\nx: %E\nk: %E\nint: %E\nGauss: %E\n",sys.mu,sys.npart,sys.consx,sys.consk,sys.consint,gausstemp);
-	printf("Val: %E\n",densintegrate(sys));
+
 	return normalize(sys);
 }
 
@@ -236,7 +238,7 @@ void writetofile(struct system sys,int num){
 
 	for(ii=0;ii<Lx;ii++){
 		for(jj=0;jj<Ly;jj++){
-			fprintf(file,"%E\t%E\t%E\t%E\n",sys.x.x[ii],sys.y.x[jj],sys.psi[ii*Lx+jj][0],sys.psi[ii*Lx+jj][1]);
+			fprintf(file,"%E\t%E\t%E\t%E\n",sys.x.x[ii],sys.y.x[jj],sys.psi[ii*Ly+jj][0],sys.psi[ii*Ly+jj][1]);
 		}
 	}
 	fclose(file);
@@ -251,17 +253,17 @@ struct system timestep(struct system sys){
 	// Half a space step
 	for(ii=0;ii<Lx;ii++){
 		for(jj=0;jj<Ly;jj++){
-			psire = sys.psi[ii*Lx+jj][0];
-			psiim = sys.psi[ii*Lx+jj][1];
+			psire = sys.psi[ii*Ly+jj][0];
+			psiim = sys.psi[ii*Ly+jj][1];
 
 			psi2 = pow(psire*psire+psiim*psiim,2./3.);
 
-			arg = sys.consx * sys.x2[ii*Lx+jj]+sys.consint*psi2;
+			arg = sys.consx * sys.x2[ii*Ly+jj]+sys.consint*psi2;
 			sinarg = sin(arg);
 			cosarg = cos(arg);
 
-			sys.psi[ii*Lx+jj][0] = psire * cosarg - psiim * sinarg;
-			sys.psi[ii*Lx+jj][1] = psire * sinarg + psiim * cosarg;
+			sys.psi[ii*Ly+jj][0] = psire * cosarg - psiim * sinarg;
+			sys.psi[ii*Ly+jj][1] = psire * sinarg + psiim * cosarg;
 		}
 	}
 
@@ -271,15 +273,15 @@ struct system timestep(struct system sys){
 	// Momentum space step
 	for(ii=0;ii<Lx;ii++){
 		for(jj=0;jj<Ly;jj++){
-			psire = sys.psi[ii*Lx+jj][0];
-			psiim = sys.psi[ii*Lx+jj][1];
+			psire = sys.psi[ii*Ly+jj][0];
+			psiim = sys.psi[ii*Ly+jj][1];
 
-			arg = sys.consk * sys.k2[ii*Lx+jj];
+			arg = sys.consk * sys.k2[ii*Ly+jj];
 			sinarg = sin(arg);
 			cosarg = cos(arg);
 
-			sys.psi[ii*Lx+jj][0] = (psire * cosarg - psiim * sinarg)/(double)sys.gridsize;
-			sys.psi[ii*Lx+jj][1] = (psire * sinarg + psiim * cosarg)/(double)sys.gridsize;
+			sys.psi[ii*Ly+jj][0] = (psire * cosarg - psiim * sinarg)/(double)sys.gridsize;
+			sys.psi[ii*Ly+jj][1] = (psire * sinarg + psiim * cosarg)/(double)sys.gridsize;
 		}
 	}
 
@@ -289,17 +291,17 @@ struct system timestep(struct system sys){
 	// Half a space step
 	for(ii=0;ii<Lx;ii++){
 		for(jj=0;jj<Ly;jj++){
-			psire = sys.psi[ii*Lx+jj][0];
-			psiim = sys.psi[ii*Lx+jj][1];
+			psire = sys.psi[ii*Ly+jj][0];
+			psiim = sys.psi[ii*Ly+jj][1];
 
 			psi2 = pow(psire*psire+psiim*psiim,2./3.);
 
-			arg = sys.consx * sys.x2[ii*Lx+jj]+sys.consint*psi2;
+			arg = sys.consx * sys.x2[ii*Ly+jj]+sys.consint*psi2;
 			sinarg = sin(arg);
 			cosarg = cos(arg);
 
-			sys.psi[ii*Lx+jj][0] = psire * cosarg - psiim * sinarg;
-			sys.psi[ii*Lx+jj][1] = psire * sinarg + psiim * cosarg;
+			sys.psi[ii*Ly+jj][0] = psire * cosarg - psiim * sinarg;
+			sys.psi[ii*Ly+jj][1] = psire * sinarg + psiim * cosarg;
 		}
 	}
 
@@ -320,16 +322,16 @@ struct system imaginarytimestep(struct system sys){
 	// Half a space step
 	for(ii=0;ii<Lx;ii++){
 		for(jj=0;jj<Ly;jj++){
-			psire = sys.psi[ii*Lx+jj][0];
-			psiim = sys.psi[ii*Lx+jj][1];
+			psire = sys.psi[ii*Ly+jj][0];
+			psiim = sys.psi[ii*Ly+jj][1];
 
 			psi2 = pow(psire*psire+psiim*psiim,2./3.);
 
-			arg = sys.consx * sys.x2[ii*Lx+jj]+sys.consint*psi2;
+			arg = sys.consx * sys.x2[ii*Ly+jj]+sys.consint*psi2;
 			exparg = exp(arg);
 
-			sys.psi[ii*Lx+jj][0] = psire * exparg;
-			sys.psi[ii*Lx+jj][1] = psiim * exparg;
+			sys.psi[ii*Ly+jj][0] = psire * exparg;
+			sys.psi[ii*Ly+jj][1] = psiim * exparg;
 		}
 	}
 
@@ -339,14 +341,14 @@ struct system imaginarytimestep(struct system sys){
 	// Momentum space step
 	for(ii=0;ii<Lx;ii++){
 		for(jj=0;jj<Ly;jj++){
-			psire = sys.psi[ii*Lx+jj][0];
-			psiim = sys.psi[ii*Lx+jj][1];
+			psire = sys.psi[ii*Ly+jj][0];
+			psiim = sys.psi[ii*Ly+jj][1];
 
-			arg = sys.consk * sys.k2[ii*Lx+jj];
+			arg = sys.consk * sys.k2[ii*Ly+jj];
 			exparg = exp(arg);
 
-			sys.psi[ii*Lx+jj][0] = psire * exparg/(double)sys.gridsize;
-			sys.psi[ii*Lx+jj][1] = psiim * exparg/(double)sys.gridsize;
+			sys.psi[ii*Ly+jj][0] = psire * exparg/(double)sys.gridsize;
+			sys.psi[ii*Ly+jj][1] = psiim * exparg/(double)sys.gridsize;
 		}
 	}
 
@@ -356,16 +358,16 @@ struct system imaginarytimestep(struct system sys){
 	// Half a space step
 	for(ii=0;ii<Lx;ii++){
 		for(jj=0;jj<Ly;jj++){
-			psire = sys.psi[ii*Lx+jj][0];
-			psiim = sys.psi[ii*Lx+jj][1];
+			psire = sys.psi[ii*Ly+jj][0];
+			psiim = sys.psi[ii*Ly+jj][1];
 
 			psi2 = pow(psire*psire+psiim*psiim,2./3.);
 
-			arg = sys.consx * sys.x2[ii*Lx+jj]+sys.consint*psi2;
+			arg = sys.consx * sys.x2[ii*Ly+jj]+sys.consint*psi2;
 			exparg = exp(arg);
 
-			sys.psi[ii*Lx+jj][0] = psire * exparg;
-			sys.psi[ii*Lx+jj][1] = psiim * exparg;
+			sys.psi[ii*Ly+jj][0] = psire * exparg;
+			sys.psi[ii*Ly+jj][1] = psiim * exparg;
 		}
 	}
 
@@ -383,8 +385,8 @@ struct system normalize(struct system sys){
 
 	for(ii=0;ii<Lx;ii++){
 		for(jj=0;jj<Ly;jj++){
-			sys.psi[ii*Lx+jj][0] *= invtotal;
-			sys.psi[ii*Lx+jj][1] *= invtotal;
+			sys.psi[ii*Ly+jj][0] *= invtotal;
+			sys.psi[ii*Ly+jj][1] *= invtotal;
 		}
 	}
 
@@ -398,7 +400,7 @@ double densintegrate(struct system sys){
 	double total = 0;
 	for(ii=0;ii<Lx;ii++){
 		for(jj=0;jj<Ly;jj++){
-			total += sys.psi[ii*Lx+jj][0]*sys.psi[ii*Lx+jj][0]+sys.psi[ii*Lx+jj][1]*sys.psi[ii*Lx+jj][1];
+			total += sys.psi[ii*Ly+jj][0]*sys.psi[ii*Ly+jj][0]+sys.psi[ii*Ly+jj][1]*sys.psi[ii*Ly+jj][1];
 		}
 	}
 
@@ -420,8 +422,8 @@ double innerproductwithgroundstate(struct system sys){
 	for(ii=0;ii<Lx;ii++){
 		for(jj=0;jj<Ly;jj++){
 			groundstate = tempconst1*pow(MAX(0.,1-(sys.x.x[ii]*sys.lscale/tempconst2x)*(sys.x.x[ii]*sys.lscale/tempconst2x)-(sys.y.x[jj]*sys.lscale/tempconst2y)*(sys.y.x[jj]*sys.lscale/tempconst2y)),3./4.);
-			totalre += groundstate * sys.psi[ii*Lx+jj][0];
-			totalim += groundstate * sys.psi[ii*Lx+jj][1];
+			totalre += groundstate * sys.psi[ii*Ly+jj][0];
+			totalim += groundstate * sys.psi[ii*Ly+jj][1];
 		}
 	}
 
