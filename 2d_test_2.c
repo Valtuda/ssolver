@@ -268,8 +268,8 @@ struct system timestep(struct system sys){
 					cosarg = cos(arg);
 					sinarg = sin(arg);
 
-					//sys.psi[ii*Ly+jj][0] = psire*cosarg - psiim * sinarg;
-					//sys.psi[ii*Ly+jj][1] = psiim*cosarg + psire * sinarg;
+					sys.psi[ii*Ly+jj][0] = psire*cosarg - psiim * sinarg;
+					sys.psi[ii*Ly+jj][1] = psiim*cosarg + psire * sinarg;
 				}
 			}
 		}
@@ -295,8 +295,8 @@ struct system timestep(struct system sys){
 					cosarg = cos(arg);
 					sinarg = sin(arg);
 
-					//sys.psi[ii*Ly+jj][0] = psire*cosarg - psiim * sinarg;
-					//sys.psi[ii*Ly+jj][1] = psiim*cosarg + psire * sinarg;
+					sys.psi[ii*Ly+jj][0] = (psire*cosarg - psiim * sinarg)/(double)sys.gridsize;
+					sys.psi[ii*Ly+jj][1] = (psiim*cosarg + psire * sinarg)/(double)sys.gridsize;
 				}
 			}
 		}
@@ -322,8 +322,8 @@ struct system timestep(struct system sys){
 					cosarg = cos(arg);
 					sinarg = sin(arg);
 
-					//sys.psi[ii*Ly+jj][0] = psire*cosarg - psiim * sinarg;
-					//sys.psi[ii*Ly+jj][1] = psiim*cosarg + psire * sinarg;
+					sys.psi[ii*Ly+jj][0] = psire*cosarg - psiim * sinarg;
+					sys.psi[ii*Ly+jj][1] = psiim*cosarg + psire * sinarg;
 				}
 			}
 		}
@@ -378,8 +378,8 @@ struct system imaginarytimestep(struct system sys){
 				psiim = sys.psi[ii*Ly+jj][1];
 				arg = sys.consk * sys.k2[ii*Ly+jj];
 				exparg = exp(arg);
-				sys.psi[ii*Ly+jj][0] = psire * exparg/(double)sys.gridsize;
-				sys.psi[ii*Ly+jj][1] = psiim * exparg/(double)sys.gridsize;
+				sys.psi[ii*Ly+jj][0] = psire * exparg;
+				sys.psi[ii*Ly+jj][1] = psiim * exparg;
 			}
 		}
 	}
