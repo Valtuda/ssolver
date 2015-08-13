@@ -22,8 +22,8 @@
 
 // System size (MUST ALL BE EVEN)
 
-#define Lx 2000
-#define Ly 1200
+#define Lx 800
+#define Ly 400
 #define STEPSPERSCALETIME 100000
 
 // Temporary definition of MAX function
@@ -87,8 +87,8 @@ void main(){
 	printf("Sum: %E\n",densintegrate(sys));
 	printf("WithGroundState: %d\t %E\n",-1,innerproductwithgroundstate(sys));
 
-	for(ii=0;ii<50000;ii++){
-		if(ii % 10 == 0)
+	for(ii=0;ii<50;ii++){
+		if(ii % 1 == 0)
 			printf("WithGroundState: %d\t %E\n",ii,innerproductwithgroundstate(sys));
 		sys = imaginarytimestep(sys);
 	}
@@ -100,6 +100,7 @@ void main(){
 			writetofile(sys,ii/100);
 		}
 		sys = timestep(sys);
+
 	}
 
 	//writetofile(sys,0);
@@ -190,22 +191,19 @@ struct system initialize(){
 	}
 
 	// Use multithreaded fftw (Not enabled on students server)
-	omp_set_num_threads(3);
-	fftw_init_threads();
-	fftw_plan_with_nthreads(omp_get_max_threads());
+	omp_set_num_threads(4);
+	//fftw_init_threads();
+	//fftw_plan_with_nthreads(omp_get_max_threads());
 
 	// Initialize fftw plans
 	sys.pf = fftw_plan_dft_2d(Lx, Ly, sys.psi, sys.psi, FFTW_FORWARD, FFTW_MEASURE);
 	sys.pb = fftw_plan_dft_2d(Lx, Ly, sys.psi, sys.psi, FFTW_BACKWARD, FFTW_MEASURE);
 
 	// Initialize the wavefunction in the Thomas Fermi profile
-	//double tempconst1 = sqrt(sys.lscale)*sqrt(2./9.* sys.mu* sys.mu/(hbar*hbar*2.*2.*Pi*Pi*104.*104.*as*sys.npart));
-	double tempconst1 = sys.lscale*sqrt(pow(sys.mu,3./2.)/(3.*sqrt(3.*Pi)*pow(hbar*2.*Pi*104.,3./2.)*as*sqrt(hbar/(m*2.*Pi*104.))));//*sys.npart));
-	//double tempconst2x = sqrt(2.*sys.mu/(m*2.*2.*Pi*Pi*16.*16.));
-	//double tempconst2y = sqrt(2.*sys.mu/(m*2.*2.*Pi*Pi*104.*104.));
+	double tempconst = sys.lscale*sqrt(pow(sys.mu,3./2.)/(3.*sqrt(3.*Pi)*pow(hbar*2.*Pi*104.,3./2.)*as*sqrt(hbar/(m*2.*Pi*104.))));//*sys.npart));
 	for(ii=0;ii<Lx;ii++){
 		for(jj=0;jj<Ly;jj++){
-			sys.psi[ii*Ly+jj][0] = tempconst1*pow(MAX(0.,1-(sys.x.x[ii]/sys.x.rtfs)*(sys.x.x[ii]/sys.x.rtfs)-(sys.y.x[jj]/sys.y.rtfs)*(sys.y.x[jj]/sys.y.rtfs)),3./4.);
+			sys.psi[ii*Ly+jj][0] = tempconst*pow(MAX(0.,1-(sys.x.x[ii]/sys.x.rtfs)*(sys.x.x[ii]/sys.x.rtfs)-(sys.y.x[jj]/sys.y.rtfs)*(sys.y.x[jj]/sys.y.rtfs)),3./4.);
 			sys.psi[ii*Ly+jj][1] = 0;
 		}
 	}
@@ -226,7 +224,7 @@ struct system initialize(){
 			sys.extrapot[ii*Ly+jj] = -0.5*gausstemp*exp(-(sys.x.x[ii]/(10.*sys.x.dx))*(sys.x.x[ii]/(10.*sys.x.dx))/2.);
 		}
 	}
-	printf("List of constants:\nmu: %E\nnpart: %E\nx: %E\nk: %E\nint: %E\nGauss: %E\n",sys.mu,sys.npart,sys.consx,sys.consk,sys.consint,gausstemp);
+	printf("List of constants:\nmu: %E\nnpart: %E\nx: %E\nk: %E\nint: %E\nGauss: %E\ncohl: %E\ndx: %E\n",sys.mu,sys.npart,sys.consx,sys.consk,sys.consint,gausstemp,sys.lscale*sqrt(2.*m*sys.mu)/hbar,sys.x.dx);
 
 	return normalize(sys);
 }
@@ -249,69 +247,91 @@ void writetofile(struct system sys,int num){
 
 // Performs a single time step on the system
 struct system timestep(struct system sys){
-	int ii,jj; // Initialize iterators
-	double xi,psire,psiim,psi2,arg,cosarg,sinarg;
 
-	// Half a space step
-	for(ii=0;ii<Lx;ii++){
-		for(jj=0;jj<Ly;jj++){
-			psire = sys.psi[ii*Ly+jj][0];
-			psiim = sys.psi[ii*Ly+jj][1];
+	#pragma omp parallel
+	{
 
-			psi2 = pow(psire*psire+psiim*psiim,2./3.);
+		int ii,jj; // Initialize iterators
+		double psire,psiim,psi2,arg,cosarg,sinarg;
 
-			arg = sys.consx * sys.x2[ii*Ly+jj]+sys.consint*psi2;
-			sinarg = sin(arg);
-			cosarg = cos(arg);
+		// Half a space step
+		#pragma omp for
+		for(ii=0;ii<Lx;ii++){
+			for(jj=0;jj<Ly;jj++){
+				psire = sys.psi[ii*Ly+jj][0];
+				psiim = sys.psi[ii*Ly+jj][1];
 
-			sys.psi[ii*Ly+jj][0] = psire * cosarg - psiim * sinarg;
-			sys.psi[ii*Ly+jj][1] = psire * sinarg + psiim * cosarg;
+				psi2 = pow(psire*psire+psiim*psiim,2./3.);
+
+				arg = sys.consx * sys.x2[ii*Ly+jj]+sys.consint*psi2;
+				cosarg = cos(arg);
+				sinarg = sin(arg);
+
+				sys.psi[ii*Ly+jj][0] = psire*cosarg - psiim * sinarg;
+				sys.psi[ii*Ly+jj][1] = psiim*cosarg + psire * sinarg;
+			}
 		}
 	}
 
 	// Fourier transform of wave function
 	fftw_execute(sys.pf);
 
-	// Momentum space step
-	for(ii=0;ii<Lx;ii++){
-		for(jj=0;jj<Ly;jj++){
-			psire = sys.psi[ii*Ly+jj][0];
-			psiim = sys.psi[ii*Ly+jj][1];
+	#pragma omp parallel
+	{
 
-			arg = sys.consk * sys.k2[ii*Ly+jj];
-			sinarg = sin(arg);
-			cosarg = cos(arg);
+		int ii,jj; // Initialize iterators
+		double psire,psiim,arg,cosarg,sinarg;
 
-			sys.psi[ii*Ly+jj][0] = (psire * cosarg - psiim * sinarg)/(double)sys.gridsize;
-			sys.psi[ii*Ly+jj][1] = (psire * sinarg + psiim * cosarg)/(double)sys.gridsize;
+		// Momentum space step
+		#pragma omp for
+		for(ii=0;ii<Lx;ii++){
+			for(jj=0;jj<Ly;jj++){
+				psire = sys.psi[ii*Ly+jj][0];
+				psiim = sys.psi[ii*Ly+jj][1];
+
+				arg = sys.consk * sys.k2[ii*Ly+jj];
+
+				cosarg = cos(arg);
+				sinarg = sin(arg);
+
+				sys.psi[ii*Ly+jj][0] = psire*cosarg - psiim * sinarg;
+				sys.psi[ii*Ly+jj][1] = psiim*cosarg + psire * sinarg;
+			}
 		}
 	}
 
 	// Fourier transform back
 	fftw_execute(sys.pb);
 
-	// Half a space step
-	for(ii=0;ii<Lx;ii++){
-		for(jj=0;jj<Ly;jj++){
-			psire = sys.psi[ii*Ly+jj][0];
-			psiim = sys.psi[ii*Ly+jj][1];
 
-			psi2 = pow(psire*psire+psiim*psiim,2./3.);
+	#pragma omp parallel
+	{
+		int ii,jj; // Initialize iterators
+		double psire,psiim,psi2,arg,cosarg,sinarg;
 
-			arg = sys.consx * sys.x2[ii*Ly+jj]+sys.consint*psi2;
-			sinarg = sin(arg);
-			cosarg = cos(arg);
+		#pragma omp for
+		for(ii=0;ii<Lx;ii++){
+			for(jj=0;jj<Ly;jj++){
+				psire = sys.psi[ii*Ly+jj][0];
+				psiim = sys.psi[ii*Ly+jj][1];
 
-			sys.psi[ii*Ly+jj][0] = psire * cosarg - psiim * sinarg;
-			sys.psi[ii*Ly+jj][1] = psire * sinarg + psiim * cosarg;
+				psi2 = pow(psire*psire+psiim*psiim,2./3.);
+				arg = sys.consx * sys.x2[ii*Ly+jj]+sys.consint*psi2;
+
+				cosarg = cos(arg);
+				sinarg = sin(arg);
+
+				sys.psi[ii*Ly+jj][0] = psire*cosarg - psiim * sinarg;
+				sys.psi[ii*Ly+jj][1] = psiim*cosarg + psire * sinarg;
+			}
 		}
 	}
-
 
 
 	// Return updated system
 	return sys;
 }
+
 
 // Performs a single time step on the system
 struct system imaginarytimestep(struct system sys){
@@ -362,7 +382,7 @@ struct system imaginarytimestep(struct system sys){
 			}
 		}
 	}
-	
+
 	// Fourier transform back
 	fftw_execute(sys.pb);
 
